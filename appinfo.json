@@ -1,0 +1,19 @@
+{
+    "appKeys": {},
+    "capabilities": [
+        ""
+    ],
+    "companyName": "Slugonamission",
+    "longName": "Calendar",
+    "projectType": "native",
+    "resources": {
+        "media": []
+    },
+    "shortName": "Calendar",
+    "uuid": "372d6b1a-faa1-4df2-9b71-88fb0bbaaf2e",
+    "versionCode": 1,
+    "versionLabel": "1.0",
+    "watchapp": {
+        "watchface": false
+    }
+}
