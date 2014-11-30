@@ -12,9 +12,10 @@ typedef struct
     WindowHandlers handlers;
 } ViewRegistration;
 
-extern ViewRegistration views[];
+extern ViewRegistration myapp_views[];
 
 int views_create();
 void views_destroy();
+Window* view_get(int index);
     
 #endif
