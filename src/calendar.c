@@ -23,16 +23,20 @@
 typedef struct
 {
     Layer* graphicsLayer;
+    time_t curTime;
 } RootData;
 
-// Root graphics context drawing routine
-void calendar_graphics_draw(Layer* layer, GContext* context);
-    
-// Draw a single calendar
-void calendar_single_draw(Layer* layer, GContext* context, int16_t offset);
 
-// Monthno should be 1-12
-int days_in_month(int monthNo, int yearNo);
+void calendar_graphics_draw(Layer* layer, GContext* context); // Root graphics context drawing routine
+void calendar_single_draw(Layer* layer, GContext* context, int16_t offset); // Draw a single calendar
+void calendar_click_config_provider(void* context);
+int days_in_month(int monthNo, int yearNo);  // Monthno should be 1-12
+
+// Click handlers
+// Merge them all for single, since it's quite simple
+void calendar_click_single(ClickRecognizerRef recogniser, void* context);
+
+// -----------------------------------------------------------------------
 
 int days_in_month(int monthNo, int yearNo)
 {
@@ -77,12 +81,15 @@ void calendar_load(Window* wnd)
     if(data == NULL)
         APP_LOG(APP_LOG_LEVEL_ERROR, "Failed to allocate storage for data");
     data->graphicsLayer = graphicsLayer;
+    data->curTime = time(NULL);
     window_set_user_data(wnd, data);
     
     // Set the update callback
     layer_set_update_proc(graphicsLayer, calendar_graphics_draw);
     
     layer_add_child(windowLayer, graphicsLayer);
+    
+    window_set_click_config_provider(wnd, calendar_click_config_provider);
 }
 
 void calendar_unload(Window* wnd)
@@ -91,6 +98,38 @@ void calendar_unload(Window* wnd)
     if(data->graphicsLayer)
         layer_destroy(data->graphicsLayer);
     free(data);
+}
+
+void calendar_click_config_provider(void* context)
+{
+    window_single_click_subscribe(BUTTON_ID_UP, calendar_click_single);
+    window_single_click_subscribe(BUTTON_ID_DOWN, calendar_click_single);
+    window_single_click_subscribe(BUTTON_ID_SELECT, calendar_click_single);
+}
+
+// Context in this case will be the window pointer.
+void calendar_click_single(ClickRecognizerRef recogniser, void* context)
+{
+    ButtonId button = click_recognizer_get_button_id(recogniser);
+    Window* wnd = (Window*)context;
+    RootData* data = window_get_user_data(wnd);
+    
+    switch(button)
+    {
+    case BUTTON_ID_UP:
+        data->curTime -= 7 * 86400;
+        break;
+    case BUTTON_ID_DOWN:
+        data->curTime += 7 * 86400;
+        break;
+    case BUTTON_ID_SELECT:
+        data->curTime += 86400;
+        break;
+    default:
+        return; // Don't need to mark as dirty.
+    }
+    
+    layer_mark_dirty(data->graphicsLayer);
 }
 
 void calendar_graphics_draw(Layer* layer, GContext* context)
@@ -108,7 +147,8 @@ void calendar_graphics_draw(Layer* layer, GContext* context)
 void calendar_single_draw(Layer* layer, GContext* context, int16_t offset)
 {
     // Get the current date
-    time_t t = time(NULL);
+    RootData* data = window_get_user_data(layer_get_window(layer));
+    time_t t = data->curTime;
     struct tm* localTime = localtime(&t);
     char month[20];
     strftime(month, 20, "%B %Y", localTime);
@@ -201,6 +241,20 @@ void calendar_single_draw(Layer* layer, GContext* context, int16_t offset)
         char dayStr[3];
         snprintf(dayStr, 3, "%d", day);
         
+        // Is this the current day?
+        if(day == localTime->tm_mday)
+        {
+            // Paint it white
+            GRect dayRectFill;
+            dayRectFill.origin.x = (x * vertSubDiv) + CALENDARPANE_X_MARGIN;
+            dayRectFill.origin.y = (y * horizSubDiv) + CALENDARPANE_TOP + offset;
+            dayRectFill.size.h = horizSubDiv;
+            dayRectFill.size.w = vertSubDiv;
+            graphics_context_set_fill_color(context, GColorWhite);
+            graphics_context_set_text_color(context, GColorBlack);
+            graphics_fill_rect(context, dayRectFill, 0, GCornerNone);
+        }
+        
         GRect dayRect;
         dayRect.origin.x = (x * vertSubDiv) + CALENDARPANE_X_MARGIN + CALENDARPANE_NUMBER_X_PAD;
         dayRect.origin.y = (y * horizSubDiv) + CALENDARPANE_TOP + offset;
@@ -208,5 +262,11 @@ void calendar_single_draw(Layer* layer, GContext* context, int16_t offset)
         dayRect.size.w = vertSubDiv;
         
         graphics_draw_text(context, dayStr, fonts_get_system_font(FONT_KEY_GOTHIC_14), dayRect, GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+        
+        if(day == localTime->tm_mday)
+        {
+            graphics_context_set_fill_color(context, GColorBlack);
+            graphics_context_set_text_color(context, GColorWhite);
+        }
     }
 }
