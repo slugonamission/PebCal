@@ -3,14 +3,17 @@
 
 // Include all views
 #include "calendar.h"
+#include "agenda.h"
     
 #define REG(name) { NULL, { .load = name ## _load, .unload = name ## _unload, .appear = NULL, .disappear = NULL } }
 #define REG_APPEAR(name) { NULL, { .load = name ## _load, .unload = name ## _unload, .appear = name ## _appear, .disappear = name ## _disappear } }
+#define REG_NULL { NULL, { NULL, NULL, NULL, NULL } }
 
 ViewRegistration myapp_views[] = 
 {
     REG(calendar),
-    { NULL, { NULL, NULL, NULL, NULL } }
+    REG_APPEAR(agenda),
+    REG_NULL
 };
 
 // Create all listed views. Should be called first.

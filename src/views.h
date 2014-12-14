@@ -5,6 +5,7 @@
 
 // Indices into the views array.
 #define VIEW_CALENDAR 0
+#define VIEW_AGENDA 1
     
 typedef struct
 {

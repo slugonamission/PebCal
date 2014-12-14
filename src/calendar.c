@@ -1,5 +1,6 @@
 #include <pebble.h>
 #include "calendar.h"
+#include "views.h"
     
 #define CALENDAR_FOREGROUND GColorWhite
 #define CALENDAR_BACKGROUND GColorBlack
@@ -35,6 +36,7 @@ int days_in_month(int monthNo, int yearNo);  // Monthno should be 1-12
 // Click handlers
 // Merge them all for single, since it's quite simple
 void calendar_click_single(ClickRecognizerRef recogniser, void* context);
+void calendar_click_long(ClickRecognizerRef recogniser, void* context);
 
 // -----------------------------------------------------------------------
 
@@ -105,6 +107,8 @@ void calendar_click_config_provider(void* context)
     window_single_click_subscribe(BUTTON_ID_UP, calendar_click_single);
     window_single_click_subscribe(BUTTON_ID_DOWN, calendar_click_single);
     window_single_click_subscribe(BUTTON_ID_SELECT, calendar_click_single);
+    
+    window_long_click_subscribe(BUTTON_ID_SELECT, 0, calendar_click_long, NULL);
 }
 
 // Context in this case will be the window pointer.
@@ -130,6 +134,12 @@ void calendar_click_single(ClickRecognizerRef recogniser, void* context)
     }
     
     layer_mark_dirty(data->graphicsLayer);
+}
+
+void calendar_click_long(ClickRecognizerRef recogniser, void* context)
+{
+    // Push on the agenda view
+    window_stack_push(view_get(VIEW_AGENDA), 1);
 }
 
 void calendar_graphics_draw(Layer* layer, GContext* context)
