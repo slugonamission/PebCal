@@ -1,6 +1,7 @@
 #include <pebble.h>
 #include "calendar.h"
 #include "views.h"
+#include "devinterface.h"
     
 #define CALENDAR_FOREGROUND GColorWhite
 #define CALENDAR_BACKGROUND GColorBlack
@@ -20,23 +21,35 @@
 #define WEEK_START_SUN 0
 #define WEEK_START_MON 1
 #define WEEK_START_OFFSET WEEK_START_MON
+
+// Shorter version of struct tm to store which calendar page days_in_use_valid is valid for
+typedef struct
+{
+    unsigned int month;
+    unsigned int year;
+} CalendarDate;
     
 typedef struct
 {
     Layer* graphicsLayer;
     time_t curTime;
+    uint32_t days_in_use;
+    CalendarDate days_in_use_valid;
 } RootData;
 
 
-void calendar_graphics_draw(Layer* layer, GContext* context); // Root graphics context drawing routine
-void calendar_single_draw(Layer* layer, GContext* context, int16_t offset); // Draw a single calendar
-void calendar_click_config_provider(void* context);
-int days_in_month(int monthNo, int yearNo);  // Monthno should be 1-12
+static void calendar_graphics_draw(Layer* layer, GContext* context); // Root graphics context drawing routine
+static void calendar_single_draw(Layer* layer, GContext* context, int16_t offset); // Draw a single calendar
+static void calendar_click_config_provider(void* context);
+static int days_in_month(int monthNo, int yearNo);  // Monthno should be 1-12
+
+// Communication handlers
+static void daysused_returned(int result, uint32_t days_used, unsigned int month, unsigned int year, void* context);
 
 // Click handlers
 // Merge them all for single, since it's quite simple
-void calendar_click_single(ClickRecognizerRef recogniser, void* context);
-void calendar_click_long(ClickRecognizerRef recogniser, void* context);
+static void calendar_click_single(ClickRecognizerRef recogniser, void* context);
+static void calendar_click_long(ClickRecognizerRef recogniser, void* context);
 
 // -----------------------------------------------------------------------
 
@@ -65,7 +78,6 @@ void calendar_load(Window* wnd)
     Layer* windowLayer = window_get_root_layer(wnd);
     
     // Get the frame of the parent layer
-    APP_LOG(APP_LOG_LEVEL_INFO, "Getting frame");
     GRect calendarFrame = layer_get_frame(windowLayer);
     GRect calendarBounds = calendarFrame;
     
@@ -155,7 +167,7 @@ void calendar_graphics_draw(Layer* layer, GContext* context)
 }
 
 void calendar_single_draw(Layer* layer, GContext* context, int16_t offset)
-{
+{    
     // Get the current date
     RootData* data = window_get_user_data(layer_get_window(layer));
     time_t t = data->curTime;
@@ -163,6 +175,15 @@ void calendar_single_draw(Layer* layer, GContext* context, int16_t offset)
     char month[20];
     strftime(month, 20, "%B %Y", localTime);
     
+    if(data->days_in_use_valid.month != (unsigned int)localTime->tm_mon+1 || data->days_in_use_valid.year != (unsigned int)(localTime->tm_year + 1900))
+    {
+        APP_LOG(APP_LOG_LEVEL_INFO, "Requesting new data. %d %d -> %d %d", data->days_in_use_valid.month, data->days_in_use_valid.year, localTime->tm_mon, localTime->tm_year);
+        int rv = 0;
+        rv = devinterface_get_days_used(localTime->tm_mon, localTime->tm_year, daysused_returned, data);
+        if(rv != DEV_STAT_OK)
+            APP_LOG(APP_LOG_LEVEL_WARNING, "devinterface_get_days_used failed %d", rv);
+    }
+        
     // Get the first day of the month (Mon-Sun)
     // Get the current day and day of week
     int curDay = localTime->tm_mday;
@@ -271,12 +292,47 @@ void calendar_single_draw(Layer* layer, GContext* context, int16_t offset)
         dayRect.size.h = horizSubDiv;
         dayRect.size.w = vertSubDiv;
         
-        graphics_draw_text(context, dayStr, fonts_get_system_font(FONT_KEY_GOTHIC_14), dayRect, GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
-        
+        if(data->days_in_use_valid.month == (unsigned int)localTime->tm_mon+1 && data->days_in_use_valid.year == (unsigned int)(localTime->tm_year + 1900))
+        {
+            if(data->days_in_use & (1 << (day - 1)))
+                graphics_draw_text(context, dayStr, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), dayRect, GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+            else
+                graphics_draw_text(context, dayStr, fonts_get_system_font(FONT_KEY_GOTHIC_14), dayRect, GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+        }
+        else
+        {
+            graphics_draw_text(context, dayStr, fonts_get_system_font(FONT_KEY_GOTHIC_14), dayRect, GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+        }
+            
         if(day == localTime->tm_mday)
         {
             graphics_context_set_fill_color(context, GColorBlack);
             graphics_context_set_text_color(context, GColorWhite);
         }
     }
+}
+
+void daysused_returned(int result, uint32_t days_used, unsigned int month, unsigned int year, void* context)
+{
+    RootData* data = context;
+    if(result != DEV_STAT_OK)
+    {
+        APP_LOG(APP_LOG_LEVEL_WARNING, "FFS...");
+        return;
+    }
+    
+    APP_LOG(APP_LOG_LEVEL_INFO, "Got new days month %d year %d result %u", month, year, (unsigned int)days_used);
+
+    data->days_in_use = days_used;
+    
+    // Consider changing this later to only update if the returned month and year match
+    // that from the current struct tm
+    // That will be more work for now. It'll still need a tag in the struct to instruct
+    // it to re-fetch the days in use when possible.
+    // Later, if we support animations properly, we need to change this to fetch from a manager
+    // anyway...
+    data->days_in_use_valid.month = month;
+    data->days_in_use_valid.year = year;
+    
+    layer_mark_dirty(data->graphicsLayer);
 }
